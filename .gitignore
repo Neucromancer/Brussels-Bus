@@ -1,0 +1,7 @@
+# Lờ đi file database
+*.db
+# Lờ đi thư mục chứa dữ liệu thô
+data/static_data/
+# Lờ đi các file tạm của python
+__pycache__/
+*.pyc
