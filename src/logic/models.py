@@ -33,7 +33,7 @@ class AStarNode:
         self.stop = stop
         self.parent = parent
         self.g = g # Chi phí thực tế đã đi (A + C)
-        self.f = f # Chi phí dự đoán (g + B)
+        self.f = f # Chi phí dự đoán gồm có thực tế và cả ước lượng (g + B)
         self.route = route # Tuyến đang đi tại node này
 
     # Để Priority Queue so sánh được các Node với nhau

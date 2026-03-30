@@ -23,3 +23,16 @@ def walking_time(distance_km, speed_kmh=3.6):
 def find_nearest_stop(user_lat, user_lon, all_stops):
     # Trả về stop_id của bến có khoảng cách haversine nhỏ nhất
     return min(all_stops, key=lambda s: haversine(user_lat, user_lon, s.lat, s.lon))
+
+def find_nearest_stops(user_lat, user_lon, all_stops, n=3):
+    # Trả về danh sách n bến gần nhất
+    sorted_stops = sorted(all_stops, key=lambda s: haversine(user_lat, user_lon, s.lat, s.lon))
+    return sorted_stops[:n]
+
+def reconstruct_path(node):
+    # Đi ngược từ node đích về node gốc để xây dựng lại đường đi
+    path = []
+    while node:
+        path.append((node.stop.name, node.route.id if node.route else None))
+        node = node.parent
+    return path[::-1] # Đảo ngược để có thứ tự từ gốc đến đích
