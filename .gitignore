@@ -1,0 +1,9 @@
+# Lờ đi file database
+*.db
+data/stib_database.db
+__pycache__/
+# Lờ đi thư mục chứa dữ liệu thô
+data/static_data/
+# Lờ đi các file tạm của python
+__pycache__/
+*.pyc
