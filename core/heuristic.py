@@ -1,5 +1,5 @@
 import math
-
+# tính nhờ công thức Haversine(tham khảo AI)
 def heuristic(a_coord, b_coord):
     """Haversine distance"""
     lat1, lon1 = a_coord
