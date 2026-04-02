@@ -3,6 +3,7 @@ from core.data_loader import load_stop_times, load_coordinates_for_used_stops
 from core.graph_builder import build_graph
 from core.a_star import a_star
 from utils.nearest_stop import NearestStopFinder
+from datetime import datetime
 DB_PATH = "data/stib_database.db"
 
 print("Loading data...")
@@ -36,11 +37,12 @@ print("Goal in graph:", goal in graph)
 print("Start in coordinates:", start in coordinates)
 print("Goal in coordinates:", goal in coordinates)
 
+current_time = datetime.now().strftime("%H:%M:%S")
 # Run A*
 print("\nRunning A*...")
 start_time_exec = time.time()
 
-path = a_star(graph, start, goal, coordinates, start_time=0)
+path = a_star(graph, start, goal, coordinates, start_time=current_time)
 
 end_time_exec = time.time()
 
