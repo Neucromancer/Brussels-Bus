@@ -1,6 +1,6 @@
 import sqlite3
 from scipy.spatial import KDTree
-
+#tham khảo AI để tìm stop gần nhất nhanh nhất nhờ thư viện scipy
 class NearestStopFinder:
     def __init__(self, db_path, valid_stop_ids=None):
         conn = sqlite3.connect(db_path)
