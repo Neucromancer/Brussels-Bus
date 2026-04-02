@@ -9,7 +9,13 @@ def a_star(graph, start, goal, coordinates, start_time):
     heapq.heappush(open_set, (0, start))
     
     start_seconds = time_to_seconds(start_time)
+
+
+    # Khởi tạo dictonary g_score: lưu thời điểm đến nút đó(thời gian đổi qua giây từ 0h)
     g_score = {start: start_seconds}
+
+
+    # Khởi tạo set visited để tránh lặp lại các nút đã duyệt qua(do tính tối ưu của thuật toán A* )
     visited = set()
     came_from = {}
     
@@ -19,7 +25,6 @@ def a_star(graph, start, goal, coordinates, start_time):
     while open_set:
         f_score, current = heapq.heappop(open_set)
         
-        # ✅ CRITICAL: Skip if already visited
         if current in visited:
             continue
         visited.add(current)
@@ -28,11 +33,13 @@ def a_star(graph, start, goal, coordinates, start_time):
             return reconstruct_path(came_from, current)
         
         current_time = g_score[current]
+
+        # duyệt từng neighbor xung quanh nút hiện tại, push vào heaqp
         
         for neighbor, dep_time, arrival_time in graph.get(current, []):
             if neighbor in visited:  # ✅ Skip visited neighbors
                 continue
-            
+            #tìm thời điểm có chuyến đến neighbor gần với lúc vừa tới stop nhất
             next_dep = get_next_departure(current_time, dep_time)
             if next_dep is None:
                 continue
@@ -40,16 +47,18 @@ def a_star(graph, start, goal, coordinates, start_time):
             arrival_seconds = time_to_seconds(arrival_time)
             tentative_g = arrival_seconds
             
-            # Only add if it's a better path
+            # chỉ thêm nếu là mới tới hoặc thời gian tới tốt hơn
             if neighbor not in g_score or tentative_g < g_score[neighbor]:
                 came_from[neighbor] = current
                 g_score[neighbor] = tentative_g
                 
+                # hàm heuristic, push vào heaq
                 f = tentative_g + heuristic(coordinates[neighbor], coordinates[goal])
                 heapq.heappush(open_set, (f, neighbor))
     
     return None
 
+#lật lại những điểm đã đi qua
 def reconstruct_path(came_from, current, max_depth=10000):
     path = [current]
     depth = 0
