@@ -2,60 +2,86 @@ import os
 import sys
 import sqlite3
 import pandas as pd
-# --- BƯỚC 1: CẤU HÌNH ĐƯỜNG DẪN ---
-# 1. Tìm đường dẫn đến thư mục 'src'
-# __file__ là db_manager.py, dirname là data_engine, dirname của nó là src
-current_dir = os.path.dirname(os.path.abspath(__file__))
-src_path = os.path.dirname(current_dir) 
+import zipfile
 
-# 2. Thêm 'src' vào danh sách tìm kiếm của Python
+# --- BƯỚC 1: CẤU HÌNH ĐƯỜNG DẪN ---
+current_dir = os.path.dirname(os.path.abspath(__file__)) # src/data_engine
+src_path = os.path.dirname(current_dir)                  # src
+base_dir = os.path.dirname(src_path)                     # BRUSSELS-BUS (Thư mục gốc)
+
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-# 3. BÂY GIỜ MỚI IMPORT (Phải có data_engine. ở trước)
-from data_engine.data_process import load_data
-from logic.models import Stop, NextStopInfo
+# --- BƯỚC 2: CẤU HÌNH ĐƯỜNG DẪN DATABASE & DATA ---
+DATA_DIR = os.path.join(base_dir, "data")
+ZIP_PATH = os.path.join(DATA_DIR, "brussels_gtfs.zip")
+EXTRACT_DIR = os.path.join(DATA_DIR, "gtfs_raw")
 
-# --- BƯỚC 2: CẤU HÌNH ĐƯỜNG DẪN DATABASE ---
-DB_PATH = os.path.join(current_dir, "stib_database.db")
+# Đưa file DB ra thư mục data ngoài cùng để file core/data_loader.py của Nhóm 1 dễ dàng chắp nối
+DB_PATH = os.path.join(DATA_DIR, "stib_database.db")
 
-def get_data_from_db():
-    """Kết nối và lấy DataFrame thô từ SQL"""
+def build_database():
+    """Giải nén file GTFS và nạp dữ liệu vào SQLite cho thuật toán A*"""
+    if not os.path.exists(ZIP_PATH):
+        raise FileNotFoundError(f"❌ Không tìm thấy file zip tại {ZIP_PATH}. Hãy chạy api_client.py để tải data trước!")
+
+    print("--- 1. Đang giải nén dữ liệu GTFS ---")
+    os.makedirs(EXTRACT_DIR, exist_ok=True)
+    with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+        zip_ref.extractall(EXTRACT_DIR)
+    print("✅ Giải nén xong.")
+
+    print("\n--- 2. Đang tạo database SQLite ---")
+    conn = sqlite3.connect(DB_PATH)
+
+    try:
+        # Nạp bảng stops (chứa tọa độ lat, lon cho hàm heuristic)
+        print("-> Đang nạp bảng 'stops'...")
+        stops_df = pd.read_csv(os.path.join(EXTRACT_DIR, "stops.txt"))
+        stops_df.to_sql("stops", conn, if_exists="replace", index=False)
+
+        # Nạp bảng stop_times (chứa lịch trình di chuyển cho thuật toán A*)
+        print("-> Đang nạp bảng 'stop_times' (Sẽ mất vài phút vì file rất nặng)...")
+        stop_times_df = pd.read_csv(os.path.join(EXTRACT_DIR, "stop_times.txt"), low_memory=False)
+        stop_times_df.to_sql("stop_times", conn, if_exists="replace", index=False)
+        
+    except Exception as e:
+        print(f"❌ Lỗi khi đọc file TXT: {e}")
+    finally:
+        conn.close()
+        
+    print(f"✅ Hoàn tất! Database đã được lưu tại: {DB_PATH}")
+
+def test_database():
+    """Kiểm tra xem database đã có dữ liệu chuẩn form Nhóm 1 cần chưa"""
     if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"❌ Không tìm thấy file database tại: {DB_PATH}")
-    
+        return
+
     conn = sqlite3.connect(DB_PATH)
     try:
-        query = "SELECT * FROM route_paths"
-        df = pd.read_sql_query(query, conn)
-        return df
+        print("\n--- 3. TEST KẾT QUẢ DATABASE ---")
+        
+        # Đếm số lượng bến xe
+        stops_count = pd.read_sql_query("SELECT COUNT(*) as cnt FROM stops", conn).iloc[0]['cnt']
+        print(f"✅ Bảng 'stops' có: {stops_count} dòng.")
+        
+        # Đếm số lượng lịch trình
+        stop_times_count = pd.read_sql_query("SELECT COUNT(*) as cnt FROM stop_times", conn).iloc[0]['cnt']
+        print(f"✅ Bảng 'stop_times' có: {stop_times_count} dòng.")
+
+        # In thử 5 bến đầu tiên khớp với field mà Nhóm 1 gọi
+        print("\nPreview 5 bến đầu tiên (stop_id, stop_lat, stop_lon):")
+        preview_df = pd.read_sql_query("SELECT stop_id, stop_name, stop_lat, stop_lon FROM stops LIMIT 5", conn)
+        print(preview_df)
+
+    except Exception as e:
+        print(f"❌ Lỗi khi test: {e}")
     finally:
         conn.close()
 
-# --- BƯỚC 3: CHẠY TEST ---
 if __name__ == "__main__":
     try:
-        print("--- 1. Đang lấy dữ liệu từ SQLite ---")
-        df_raw = get_data_from_db()
-        print(f"✅ Đã lấy {len(df_raw)} dòng.")
-
-        print("\n--- 2. Đang chuyển đổi sang Object (via data_processing) ---")
-        stops_list = load_data(df_raw)
-        
-        print(f"\n--- 3. KẾT QUẢ TEST: 10 BẾN ĐẦU TIÊN ---")
-        # Chỉ lấy 10 bến đầu để in
-        sample_stops = stops_list[:10]
-        
-        for i, stop in enumerate(sample_stops, 1):
-            print(f"\n[{i}] Bến: {stop.name} (ID: {stop.id})")
-            print(f"    Tọa độ: ({stop.lat}, {stop.lon})")
-            
-            if not stop.next_stops:
-                print("    ⚠️ Cảnh báo: Bến này không có đường đi tiếp")
-            else:
-                print(f"    Số lượng bến kế tiếp: {len(stop.next_stops)}")
-                for connection in stop.next_stops:
-                    print(f"      --> Tới: {connection.stop.name} (Tuyến: {connection.route_id}, {connection.travel_time}p)")
-
+        build_database()
+        test_database()
     except Exception as e:
         print(f"❌ Lỗi hệ thống: {e}")

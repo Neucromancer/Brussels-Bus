@@ -3,6 +3,8 @@
 *.db
 *.sqlite
 
+data/
+
 # --- DỮ LIỆU THÔ (GTFS) ---
 # Nếu thư mục static_data đã nằm trong src/data_engine/static_data
 src/data_engine/static_data/
