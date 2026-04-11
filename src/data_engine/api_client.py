@@ -11,6 +11,8 @@ def download_static_data():
         "bmc-partner-key": "1ada3c80c34e446794790ed2652acf3c"
     }
 
+
+
     # 2. Xác định vị trí lưu file tự động
     # Lấy thư mục hiện tại của file code (src/data_engine)
     current_dir = os.path.dirname(os.path.abspath(__file__)) 
@@ -27,6 +29,8 @@ def download_static_data():
     
     # Tên file nén sẽ được lưu
     zip_file_path = os.path.join(data_dir, "brussels_gtfs.zip")
+
+    
 
     # 3. Tiến hành gọi API và tải file
     print(f"Đang tiến hành tải dữ liệu GTFS từ máy chủ Azure...")

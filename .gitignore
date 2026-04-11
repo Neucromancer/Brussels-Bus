@@ -2,7 +2,7 @@
 # Chặn tất cả file .db ở bất cứ đâu (kể cả trong src/data_engine)
 *.db
 *.sqlite
-
+*.vscode
 data/
 
 # --- DỮ LIỆU THÔ (GTFS) ---
