@@ -32,7 +32,8 @@ def find_nearest_stops(user_lat, user_lon, all_stops, n=3):
 def reconstruct_path(node):
     # Đi ngược từ node đích về node gốc để xây dựng lại đường đi
     path = []
-    while node:
-        path.append((node.stop.name, node.route.id if node.route else None))
-        node = node.parent
-    return path[::-1] # Đảo ngược để có thứ tự từ gốc đến đích
+    curr = node
+    while curr:
+        path.append(curr.stop) # Lưu cả đối tượng Stop vào danh sách
+        curr = curr.parent
+    return path[::-1] # Đảo ngược lại để đi từ Khởi đầu -> Đích
