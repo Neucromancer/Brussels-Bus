@@ -1,9 +1,9 @@
 import heapq
-from models import AStarNode
-from helpers import haversine, dist_to_minutes, reconstruct_path, find_nearest_stops
-from data_engine.db_manager import get_waiting_time
+from logic.models import AStarNode
+from logic.helpers import haversine, dist_to_minutes, reconstruct_path, find_nearest_stops
+from data_engine.data_process import get_waiting_time
 
-def a_star_search(user_coords, dest_coords, start_stops, goal_stops):
+def a_star_search(user_coords, dest_coords, all_stops):
     """
     user_coords: truyền vào tupple (lat, lon) của người dùng
     start_stops: Danh sách 3 bến gần người dùng nhất
@@ -18,17 +18,20 @@ def a_star_search(user_coords, dest_coords, start_stops, goal_stops):
     # Cấu trúc: {stop_id: min_g}
     visited = {} 
 
+    start_stops = find_nearest_stops(user_lat=user_coords.lat, user_lon=user_coords.lon, all_stops=all_stops, n=3) # Tìm 3 bến gần nhất với người dùng
+    goal_stops = find_nearest_stops(user_lat=dest_coords.lat, user_lon=dest_coords.lon, all_stops=all_stops, n=3) #
+
     # 3. Nạp 3 bến xuất phát vào Queue (Tính kèm thời gian đi bộ)
     for s_stop in start_stops:
         # Khoảng cách đi bộ từ chỗ đứng đến bến
-        d_walk = haversine(user_coords[0], user_coords[1], s_stop.lat, s_stop.lon)
+        d_walk = haversine(user_coords.lat, user_coords.lon, s_stop.lat, s_stop.lon)
         g_start = dist_to_minutes(d_walk, speed_kmh=4) # Đi bộ 4km/h
         
         # Heuristic: Từ bến này chim bay đến Tọa độ đích thực tế (25km/h)
-        d_to_dest = haversine(s_stop.lat, s_stop.lon, dest_coords[0], dest_coords[1])
+        d_to_dest = haversine(s_stop.lat, s_stop.lon, dest_coords.lat, dest_coords.lon)
         f_start = g_start + dist_to_minutes(d_to_dest, speed_kmh=25)
         
-        # Tạo Node và đẩy vào Heap
+        # Tạo Node và đẩy vào Hàng đợi ưu tiên
         start_node = AStarNode(stop=s_stop, parent=None, g=g_start, f=f_start)
         heapq.heappush(queue, start_node)
         
@@ -54,7 +57,7 @@ def a_star_search(user_coords, dest_coords, start_stops, goal_stops):
         if current_node.stop in goal_stops:
             # Tính thời gian đi bộ từ bến này về tọa độ đích thực tế
             d_to_dest = haversine(current_node.stop.lat, current_node.stop.lon, 
-                                  dest_coords[0], dest_coords[1])
+                                  dest_coords.lat, dest_coords.lon)
             final_walk_time = dist_to_minutes(d_to_dest, speed_kmh=4)
             
             total_duration = current_node.g + final_walk_time
@@ -86,7 +89,7 @@ def a_star_search(user_coords, dest_coords, start_stops, goal_stops):
                 
             # d. Tính Heuristic h(x) - Chim bay từ bến này đến Đích thực tế
             h_score = dist_to_minutes(
-                haversine(info.stop.lat, info.stop.lon, dest_coords[0], dest_coords[1]),
+                haversine(info.stop.lat, info.stop.lon, dest_coords.lat, dest_coords.lon),
                 speed_kmh=25 # Vận tốc bus trung bình
             )
             
@@ -100,5 +103,5 @@ def a_star_search(user_coords, dest_coords, start_stops, goal_stops):
             )
             heapq.heappush(queue, new_node)
 
-    return sorted(results, key=lambda x: x['duration']) # Trả về list các đường từ nhanh đến chậm
+    return sorted(results, key=lambda x:    x['duration']) # Trả về list các đường từ nhanh đến chậm
 

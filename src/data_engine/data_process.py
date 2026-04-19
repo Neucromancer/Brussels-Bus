@@ -5,7 +5,7 @@ from logic.models import Stop, NextStopInfo
 def get_waiting_time(route_id):
     return 5
 
-# 2. Nạp dữ liệu từ DataFrame vào cấu trúc Stop và NextStopInfo
+# 2. Nạp dữ liệu từ DataFrame Khởi tạo Stop
 
 def load_data(route_path_dataframe):
     all_stops = {} # {id: Stop object}

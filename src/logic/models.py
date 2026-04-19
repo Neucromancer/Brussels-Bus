@@ -29,12 +29,12 @@ class Route:
         self.stop_intervals.append(time_from_prev)
 
 class AStarNode:
-    def __init__(self, stop, parent=None, g=0, f=0, route=None):
+    def __init__(self, stop, parent=None, g=0, f=0, route_id=None):
         self.stop = stop
         self.parent = parent
         self.g = g # Chi phí thực tế đã đi (A + C)
         self.f = f # Chi phí dự đoán gồm có thực tế và cả ước lượng (g + B)
-        self.route = route # Tuyến đang đi tại node này
+        self.route_id = route_id # Tuyến đang đi tại node này
 
     # Để Priority Queue so sánh được các Node với nhau
     def __lt__(self, other):
