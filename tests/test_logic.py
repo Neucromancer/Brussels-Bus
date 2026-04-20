@@ -63,16 +63,27 @@ def run_real_test():
 
         # BƯỚC 5: Hiển thị kết quả
         if results:
-            best = results[0]
+    # Lấy tối đa 100 kết quả đầu tiên
+            top_results = results[:100]
+            
             print("\n" + "="*30)
-            print(f"🏆 KẾT QUẢ TỐT NHẤT")
-            print(f"⏱️ Tổng thời gian: {best['duration']:.2f} phút")
-            print("📍 Lộ trình đi qua:")
-            for s in best['path']:
-                print(f"   [Bến {s.id}] - {s.name}")
+            print(f"📋 DANH SÁCH {len(top_results)} KẾT QUẢ NHANH NHẤT")
             print("="*30)
+            
+            for i, res in enumerate(top_results, 1):
+                # In ra số thứ tự và thời gian
+                print(f"Top {i:3}: {res['duration']:.2f} phút")
+            
+            print("="*30)
+            
+            # Bạn vẫn có thể in chi tiết kết quả số 1 nếu muốn
+            best = results[0]
+            print(f"\n🏆 CHI TIẾT KẾT QUẢ TỐT NHẤT")
+            print(f"⏱️ Tổng thời gian: {best['duration']:.2f} phút")
+            print("📍 Lộ trình:")
+            print(" -> ".join([f"[{s.id}] {s.name}" for s in best['path']]))
         else:
-            print("❌ Không tìm thấy lộ trình nào!")
+            print("❌ Không tìm thấy lộ trình nào phù hợp.")
             
     except Exception as e:
         print(f"❌ Lỗi khi thực hiện thuật toán A*: {e}")

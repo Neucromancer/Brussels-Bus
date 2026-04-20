@@ -83,25 +83,25 @@ def a_star_search(user_coords, dest_coords, all_stops):
                 # get_waiting_time lấy từ db_manager hoặc config
                 arrival_time += get_waiting_time(info.route_id)
 
-            # c. Tỉa nhánh nếu đi lặp lại một bến (Pruning)
-            if info.stop.id not in visited or arrival_time < visited[info.stop.id]:
-                visited[info.stop.id] = arrival_time
-                
-            # d. Tính Heuristic h(x) - Chim bay từ bến này đến Đích thực tế
+            # c. Tính Heuristic h(x) - Chim bay từ bến này đến Đích thực tế
             h_score = dist_to_minutes(
                 haversine(info.stop.lat, info.stop.lon, dest_coords.lat, dest_coords.lon),
                 speed_kmh=25 # Vận tốc bus trung bình
             )
+
+            # d. Tỉa nhánh nếu đi lặp lại một bến (Pruning)
+            if info.stop.id not in visited or arrival_time < visited[info.stop.id]:
+                visited[info.stop.id] = arrival_time
             
             # e. Sau khi lọc node, tính toán và cắt tỉa => Tạo Node mới và đẩy vào hàng đợi
-            new_node = AStarNode(
-                stop=info.stop,
-                parent=current_node,
-                g=arrival_time,
-                f=arrival_time + h_score,
-                route_id=info.route_id # Lưu lại để kiểm tra chuyển tuyến ở bước sau
-            )
-            heapq.heappush(queue, new_node)
+                new_node = AStarNode(
+                    stop=info.stop,
+                    parent=current_node,
+                    g=arrival_time,
+                    f=arrival_time + h_score,
+                    route_id=info.route_id # Lưu lại để kiểm tra chuyển tuyến ở bước sau
+                )
+                heapq.heappush(queue, new_node)
 
     return sorted(results, key=lambda x:    x['duration']) # Trả về list các đường từ nhanh đến chậm
 
