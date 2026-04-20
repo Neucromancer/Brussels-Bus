@@ -29,11 +29,23 @@ def find_nearest_stops(user_lat, user_lon, all_stops, n=3):
     sorted_stops = sorted(all_stops, key=lambda s: haversine(user_lat, user_lon, s.lat, s.lon))
     return sorted_stops[:n]
 
+def find_nearest_stops(user_lat, user_lon, all_stops, radius_km=1.2):
+    stops_with_dist = []
+    
+    for stop in all_stops:
+        dist = haversine(user_lat, user_lon, stop.lat, stop.lon)
+        if dist <= radius_km:
+            stops_with_dist.append((stop, dist))
+    
+    # Sắp xếp theo khoảng cách dist để A* ưu tiên bến gần nhất trước
+    stops_with_dist.sort(key=lambda x: x[1])
+    
+    # Trả về danh sách các đối tượng stop đã lọc
+    return [item[0] for item in stops_with_dist]
+
 def reconstruct_path(node):
-    # Đi ngược từ node đích về node gốc để xây dựng lại đường đi
     path = []
-    curr = node
-    while curr:
-        path.append(curr.stop) # Lưu cả đối tượng Stop vào danh sách
-        curr = curr.parent
-    return path[::-1] # Đảo ngược lại để đi từ Khởi đầu -> Đích
+    while node:
+        path.append(node)
+        node = node.parent
+    return path[::-1] # Đảo ngược: Gốc -> Đích
