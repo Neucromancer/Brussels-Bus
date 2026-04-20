@@ -58,26 +58,69 @@ def run_real_test():
     print(f"-> Đang tìm đường đi tối ưu bằng A*...")
     
     # BƯỚC 4: Gọi thuật toán A*
-    try:
-        results = a_star_search(user_pos, dest_pos, all_stops_list)
+    results = a_star_search(user_pos, dest_pos, all_stops_list)
 
         # BƯỚC 5: Hiển thị kết quả
-        if results:
-            best = results[0]
-            print("\n" + "="*30)
-            print(f"🏆 KẾT QUẢ TỐT NHẤT")
-            print(f"⏱️ Tổng thời gian: {best['duration']:.2f} phút")
-            print("📍 Lộ trình đi qua:")
-            for s in best['path']:
-                print(f"   [Bến {s.id}] - {s.name}")
-            print("="*30)
-        else:
-            print("❌ Không tìm thấy lộ trình nào!")
-            
-    except Exception as e:
-        print(f"❌ Lỗi khi thực hiện thuật toán A*: {e}")
-        import traceback
-        traceback.print_exc()
+    if results:
+        top_results = results[:100]
+        
+        print("\n" + "="*80)
+        print(f"📋 DANH SÁCH {len(top_results)} KẾT QUẢ NHANH NHẤT")
+        print("="*80)
+        
+        for i, res in enumerate(top_results, 1):
+            print(f"Top {i:2}: {res['duration']:.2f} phút")
+        
+        print("="*80)
+        
+        # === CHI TIẾT KẾT QUẢ TỐT NHẤT ===
+        best = results[0]
+        path_nodes = best['path']
+        
+        print(f"\n🏆 CHI TIẾT KẾT QUẢ TỐT NHẤT")
+        print(f"⏱️ Tổng thời gian: {best['duration']:.2f} phút")
+        print(f"{'TÊN BẾN':<30} | {'VỊ TRÍ (LAT, LON)':<25} | {'CHUYẾN'}")
+        print("-" * 80)
 
+        route_data = []
+
+        for idx, node in enumerate(path_nodes):
+            stop = node.stop
+
+            route_data.append([stop.lat, stop.lon, stop.name])
+            
+            # 1. Định dạng thông tin cơ bản
+            stop_display = f"[{stop.id}] {stop.name}"
+            coords_display = f"({stop.lat:.4f}, {stop.lon:.4f})"
+            route_display = f"{node.route_id}" if node.route_id else "---"
+            
+            # 2. Xử lý thời gian (node.g là tổng phút đã đi từ đầu)
+            time_display = f"{node.g:>5.2f} phút"
+            
+            # 3. Tính toán thời gian chặng (thời gian đi từ bến trước đến bến này)
+            if idx > 0:
+                segment_time = node.g - path_nodes[idx-1].g
+                time_display += f" (+{segment_time:.1f}m)"
+
+            # 4. Ký hiệu biểu tượng
+            if idx == 0:
+                icon = "🏁 "
+            elif idx == len(path_nodes) - 1:
+                icon = "🚩 "
+            else:
+                icon = "┣━ "
+
+            # 5. In dòng dữ liệu căn lề thẳng hàng
+            print(f"{icon}{stop_display:<27} | {coords_display:<25} | {route_display:<12} | {time_display}")
+
+        # In thêm chặng đi bộ cuối cùng nếu có (từ bến cuối về tọa độ đích thực tế)
+        final_walk = best['duration'] - path_nodes[-1].g
+        if final_walk > 0.1: # Chỉ in nếu đi bộ đáng kể
+            print(f"🚶 {'Đi bộ về điểm đích':<27} | {'---':<25} | {'---':<12} | {best['duration']:>5.2f} phút (+{final_walk:.1f}m)")
+
+        return route_data
+
+    else:
+        print("❌ Không tìm thấy lộ trình nào phù hợp.")
 if __name__ == "__main__":
     run_real_test()

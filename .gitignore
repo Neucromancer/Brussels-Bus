@@ -21,3 +21,6 @@ __pycache__/
 # --- DỮ LIỆU TRUNG GIAN ---
 # Chặn file CSV nếu nó quá nặng (như file all_routes_stops.csv)
 src/data_engine/*.csv
+
+#
+*.html
