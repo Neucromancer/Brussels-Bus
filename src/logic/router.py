@@ -2,7 +2,7 @@ import heapq
 from logic.models import AStarNode
 from logic.helpers import haversine, dist_to_minutes, reconstruct_path, find_nearest_stops
 from data_engine.data_process import get_waiting_time
-from logic.const import WALKING_SPEED, BUS_SPEED, TRANSFER_PENALTY, UPPER_BOUND_FACTOR
+from logic.const import WALKING_SPEED, BIRD_SPEED, UPPER_BOUND_FACTOR
 
 def a_star_search(user_coords, dest_coords, all_stops):
 
@@ -26,7 +26,7 @@ def a_star_search(user_coords, dest_coords, all_stops):
         
         # Heuristic: Từ bến này chim bay đến Tọa độ đích thực tế (20km/h)
         d_to_dest = haversine(s_stop.lat, s_stop.lon, dest_coords.lat, dest_coords.lon)
-        f_start = g_start + dist_to_minutes(d_to_dest, speed_kmh=BUS_SPEED)
+        f_start = g_start + dist_to_minutes(d_to_dest, speed_kmh=BIRD_SPEED)
         
         # Tạo Node và đẩy vào Hàng đợi ưu tiên
         start_node = AStarNode(stop=s_stop, parent=None, g=g_start, f=f_start)
@@ -83,7 +83,7 @@ def a_star_search(user_coords, dest_coords, all_stops):
             # c. Tính Heuristic h(x) - Chim bay từ bến này đến Đích thực tế
             h_score = dist_to_minutes(
                 haversine(info.stop.lat, info.stop.lon, dest_coords.lat, dest_coords.lon),
-                speed_kmh=BUS_SPEED # Vận tốc bus trung bình
+                speed_kmh=BIRD_SPEED # Vận tốc chim bay
             )
 
             # d. Tỉa nhánh nếu đi lặp lại một bến (Pruning)

@@ -42,8 +42,6 @@ def build_route_paths():
         trips_df = pd.read_csv(os.path.join(EXTRACT_DIR, "trips.txt"))             # Nạp bảng trips
         stop_times_df = pd.read_csv(os.path.join(EXTRACT_DIR, "stop_times.txt"))   # Nạp bảng stop_times
 
-
-
         stops_clean = stops_df[['stop_id', 'stop_name', 'stop_lat', 'stop_lon']]   # Chỉ lấy ID bến, tên bến và tọa độ
         routes_clean = routes_df[['route_id', 'route_short_name']]                 # Chỉ lấy ID tuyến và số hiệu xe (ví dụ: "71")
         trips_clean = trips_df[['route_id', 'trip_id', 'direction_id']]            # Lấy ID tuyến, ID chuyến và hướng đi (0: đi, 1: về)
@@ -90,5 +88,3 @@ def build_route_paths():
 
     except Exception as e:
         print(f"❌ Lỗi khi lưu Database: {e}")
-
-build_route_paths()

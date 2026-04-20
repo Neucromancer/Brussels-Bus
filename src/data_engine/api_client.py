@@ -2,47 +2,30 @@ import os
 import requests
 
 def download_static_data():
-    # 1. Thông tin API
-    # Đây là endpoint chuẩn xác lấy từ tài liệu của STIB-MIVB
+    # 1. Thông tin API và Header
+
     api_url = "https://api-management-opendata-production.azure-api.net/api/gtfs/feed/stibmivb/static/" 
-    
-    headers = {
-        # Sử dụng Primary Key của bạn ở đây
-        "bmc-partner-key": "1ada3c80c34e446794790ed2652acf3c"
-    }
 
-
+    headers = {"bmc-partner-key": "1ada3c80c34e446794790ed2652acf3c"}
 
     # 2. Xác định vị trí lưu file tự động
-    # Lấy thư mục hiện tại của file code (src/data_engine)
-    current_dir = os.path.dirname(os.path.abspath(__file__)) 
-    # Lùi ra 1 cấp (src)
-    src_dir = os.path.dirname(current_dir)                   
-    # Lùi ra 1 cấp nữa về thư mục gốc của project (BRUSSELS-BUS)
-    base_dir = os.path.dirname(src_dir)                      
-    
-    # Chỉ định đường dẫn tới thư mục data ở ngoài cùng
-    data_dir = os.path.join(base_dir, "data")
-    
-    # Tự động tạo thư mục data nếu chưa có
-    os.makedirs(data_dir, exist_ok=True) 
-    
-    # Tên file nén sẽ được lưu
-    zip_file_path = os.path.join(data_dir, "brussels_gtfs.zip")
 
-    
+    current_dir = os.path.dirname(os.path.abspath(__file__))                     # \Brussels Bus\src\data_engine
+    src_dir = os.path.dirname(current_dir)                                       # \Brussels Bus\src
+    base_dir = os.path.dirname(src_dir)                                          # \BRUSSELS-BUS
+    data_dir = os.path.join(base_dir, "data")                                    # \BRUSSELS-BUS\data (nơi lưu file zip và database)
+    os.makedirs(data_dir, exist_ok=True)                                         # Tự động tạo thư mục data nếu chưa có
+    zip_file_path = os.path.join(data_dir, "brussels_gtfs.zip")                  # \BRUSSELS-BUS\data\brussels_gtfs.zip (nơi lưu file zip sau khi tải về)
 
     # 3. Tiến hành gọi API và tải file
     print(f"Đang tiến hành tải dữ liệu GTFS từ máy chủ Azure...")
     try:
-        # stream=True giúp tải file dung lượng lớn mà không làm treo RAM máy tính
-        response = requests.get(api_url, headers=headers, stream=True)
+   
+        response = requests.get(api_url, headers=headers, stream=True)          # Gửi yêu cầu GET đến API với header chứa API key, và stream=True để tải file lớn
         
-        # Kiểm tra xem API có cho phép tải không (báo lỗi nếu sai Key)
-        response.raise_for_status() 
+        response.raise_for_status()                                             # Nếu API trả về lỗi (4xx hoặc 5xx), sẽ ném ra exception và dừng chương trình
         
-        # Mở file zip và ghi dữ liệu từng phần vào ổ cứng
-        with open(zip_file_path, 'wb') as f:
+        with open(zip_file_path, 'wb') as f:                                    # Mở file zip để ghi dữ liệu
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
                 
@@ -52,6 +35,3 @@ def download_static_data():
         print(f"Lỗi xác thực hoặc API từ chối: {err}")
     except requests.exceptions.RequestException as e:
         print(f"Lỗi kết nối mạng: {e}")
-
-if __name__ == "__main__":
-    download_static_data()

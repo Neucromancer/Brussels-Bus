@@ -5,21 +5,8 @@ from tests.test_logic import run_real_test
 import folium
 
 # 1. Danh sách tọa độ mẫu (Bạn hãy thay thế bằng tọa độ thực tế từ thuật toán của bạn)
-# Cấu trúc: [Lat, Lon, "Tên trạm"]
-route_data = [
-    [50.8203, 4.4014, "GINETTE JAVAUX"],
-    [50.8190, 4.3985, "DELTA"],
-    [50.8175, 4.4005, "CHIREC"],
-    [50.8188, 4.3910, "FRAITEUR"],
-    [50.8205, 4.3840, "CIM. D'IXELLES"],
-    [50.8168, 4.3815, "ULB"],
-    [50.8185, 4.3795, "JEANNE"],
-    [50.8175, 4.3780, "BUYL"],
-    [50.8185, 4.3770, "GEO BERNIER"],
-    [50.8240, 4.3740, "ETANGS D'IXELLES"],
-    [50.8275, 4.3735, "FLAGEY"]
-]
 
+# Cấu trúc route_data: List[Lat, Lon, "Tên trạm"]
 route_data = run_real_test() # Lấy dữ liệu thực tế từ thuật toán A*
 
 # 2. Khởi tạo bản đồ tại trung tâm Brussels
@@ -44,9 +31,9 @@ for lat, lon, name in route_data:
         location=[lat, lon],
         radius=6,
         popup=name,
-        color="#e74c3c",
+        color="#753ce7",
         fill=True,
-        fill_color="#e74c3c",
+        fill_color="#3ce745",
         fill_opacity=0.9
     ).add_to(m)
 

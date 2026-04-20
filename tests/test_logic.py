@@ -52,8 +52,8 @@ def run_real_test():
 
     # BƯỚC 3: Thiết lập điểm xuất phát và đích (Tọa độ thật tại Brussels)
     # Ví dụ: Từ gần bến Delta đến gần bến Flagey
-    user_pos = Coords(50.824, 4.407)  # Gần Delta
-    dest_pos = Coords(50.827, 4.373)  # Gần Flagey
+    user_pos = Coords(50.837226, 4.300408)  # Gần Delta
+    dest_pos = Coords(50.854424, 4.438357)  # Gần Flagey
 
     print(f"-> Đang tìm đường đi tối ưu bằng A*...")
     

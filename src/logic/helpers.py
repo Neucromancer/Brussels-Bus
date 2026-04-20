@@ -36,10 +36,8 @@ def find_nearest_stops(user_lat, user_lon, all_stops, radius_km=1.2):
         dist = haversine(user_lat, user_lon, stop.lat, stop.lon)
         if dist <= radius_km:
             stops_with_dist.append((stop, dist))
-    
-    # Sắp xếp theo khoảng cách dist để A* ưu tiên bến gần nhất trước
+
     stops_with_dist.sort(key=lambda x: x[1])
-    
     # Trả về danh sách các đối tượng stop đã lọc
     return [item[0] for item in stops_with_dist]
 
