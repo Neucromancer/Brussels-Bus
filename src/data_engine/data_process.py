@@ -1,9 +1,10 @@
 from logic.models import Stop, NextStopInfo
+from logic.const import TRANSFER_PENALTY
 
 # 1. Lấy thời gian chờ trung bình của tuyến (route_id) từ database
 
 def get_waiting_time(route_id):
-    return 5
+    return TRANSFER_PENALTY
 
 # 2. Nạp dữ liệu từ DataFrame Khởi tạo Stop
 
