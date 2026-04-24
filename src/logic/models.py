@@ -39,3 +39,8 @@ class AStarNode:
     # Để Priority Queue so sánh được các Node với nhau
     def __lt__(self, other):
         return self.f < other.f
+
+class Coords:
+    def __init__(self, lat, lon):
+        self.lat = lat
+        self.lon = lon

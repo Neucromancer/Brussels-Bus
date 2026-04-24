@@ -31,9 +31,9 @@ for lat, lon, name in route_data:
         location=[lat, lon],
         radius=6,
         popup=name,
-        color="#753ce7",
+        color="#02f0f9",
         fill=True,
-        fill_color="#3ce745",
+        fill_color="#ff000d",
         fill_opacity=0.9
     ).add_to(m)
 

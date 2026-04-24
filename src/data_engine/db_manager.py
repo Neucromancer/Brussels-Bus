@@ -88,3 +88,16 @@ def build_route_paths():
 
     except Exception as e:
         print(f"❌ Lỗi khi lưu Database: {e}")
+
+# IV. HÀM HỖ TRỢ LẤY DATA FRAME route_paths TỪ DATABASE 
+
+def get_dataframe_from_db(db_path):
+    """Lấy DataFrame route_paths từ database thật"""
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"Không tìm thấy file DB tại {db_path}")
+    
+    conn = sqlite3.connect(db_path)
+    query = "SELECT * FROM route_paths"
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    return df

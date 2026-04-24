@@ -1,5 +1,5 @@
 from logic.models import Stop, NextStopInfo
-from logic.const import BUS_SPEED, TRANSFER_PENALTY
+from const import BUS_SPEED, TRANSFER_PENALTY
 from logic.helpers import haversine
 
 # I. Lấy thời gian chờ trung bình của tuyến (route_id) từ database

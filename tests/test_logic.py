@@ -2,40 +2,31 @@ import sys
 import os
 import sqlite3
 import pandas as pd
+from pathlib import Path
+current_file = Path(__file__).resolve()
 
 # 1. Cấu hình Path để import từ src
-current_dir = os.path.dirname(os.path.abspath(__file__)) # /Brussels Bus/tests
-project_root = os.path.dirname(current_dir)              # /Brussels Bus
-src_path = os.path.join(project_root, 'src')             # /Brussels Bus/src
+current_dir = current_file.parent  # /Brussels Bus/tests
+project_root = current_dir.parent  # /Brussels Bus
+src_path = project_root / "src"    # /Brussels Bus/src
 
 if src_path not in sys.path:
-    sys.path.insert(1, src_path)
+    sys.path.insert(1, str(src_path))
 
 if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+    sys.path.insert(0, str(project_root))
 
 # Import các hàm bạn đã viết
 from logic.router import a_star_search
-from logic.models import Stop, NextStopInfo
-# Giả sử hàm load_data của bạn nằm trong logic/data_process.py
 from data_engine.data_process import load_data 
+from data_engine.db_manager import get_dataframe_from_db
+from logic.models import Coords
 
-# Giả định Coords đơn giản để truyền vào a_star_search
-class Coords:
-    def __init__(self, lat, lon):
-        self.lat = lat
-        self.lon = lon
 
-def get_data_from_db(db_path):
-    """Lấy DataFrame route_paths từ database thật"""
-    if not os.path.exists(db_path):
-        raise FileNotFoundError(f"Không tìm thấy file DB tại {db_path}")
-    
-    conn = sqlite3.connect(db_path)
-    query = "SELECT * FROM route_paths"
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return df
+
+
+
+
 
 def run_real_test():
     print("--- 🚀 KHỞI ĐỘNG KIỂM TRA LOGIC VỚI DỮ LIỆU THẬT ---")
@@ -43,7 +34,7 @@ def run_real_test():
     # BƯỚC 1: Lấy dữ liệu từ DB
     db_path = os.path.join(project_root, "data", "stib_database.db")
     print(f"-> Đang đọc database từ: {db_path}")
-    route_path_df = get_data_from_db(db_path)
+    route_path_df = get_dataframe_from_db(db_path)
 
     # BƯỚC 2: Chuyển đổi DataFrame thành List các đối tượng Stop (Hàm bạn đã viết)
     print(f"-> Đang xử lý {len(route_path_df)} dòng dữ liệu thành mạng lưới Graph...")
@@ -60,7 +51,7 @@ def run_real_test():
     # BƯỚC 4: Gọi thuật toán A*
     results = a_star_search(user_pos, dest_pos, all_stops_list)
 
-        # BƯỚC 5: Hiển thị kết quả
+    # BƯỚC 5: Hiển thị kết quả
     if results:
         top_results = results[:100]
         
