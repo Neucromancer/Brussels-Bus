@@ -1,0 +1,26 @@
+# --- DATABASE ---
+# Chặn tất cả file .db ở bất cứ đâu (kể cả trong src/data_engine)
+*.db
+*.sqlite
+*.vscode
+data/
+
+# --- DỮ LIỆU THÔ (GTFS) ---
+# Nếu thư mục static_data đã nằm trong src/data_engine/static_data
+src/data_engine/static_data/
+# Chặn luôn các file nén nếu lỡ tay bỏ vào
+*.zip
+*.rar
+
+# --- PYTHON RÁC ---
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# --- DỮ LIỆU TRUNG GIAN ---
+# Chặn file CSV nếu nó quá nặng (như file all_routes_stops.csv)
+src/data_engine/*.csv
+
+#
+*.html
