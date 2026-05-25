@@ -22,7 +22,7 @@ for path in (BASE_DIR, SRC_DIR):
 
 # Project modules under src/
 from data_engine.data_process import load_data, normalize_route_paths_dataframe
-from logic.router import a_star_search
+from logic.router import a_star_search, get_curved_segment
 
 
 DEFAULT_START_LAT = 50.8466
@@ -96,8 +96,8 @@ def reset_all() -> None:
 # -----------------------------------------------------------------------------
 def resolve_db_path() -> Path:
     candidates = [
-        BASE_DIR / "src" / "data_engine" / "stib_database.db",
         BASE_DIR / "data" / "stib_database.db",
+        BASE_DIR / "src" / "data_engine" / "stib_database.db",
         BASE_DIR / "src" / "data" / "stib_database.db",
     ]
     for path in candidates:
@@ -320,26 +320,52 @@ def build_route_map(
         height=650,
     )
 
-    # Route polyline and route stop markers
     route_points = []
+    
+    # -------------------------------------------------------------
+    # LOGIC VẼ ĐƯỜNG ĐI CHÍNH (ĐÃ NÂNG CẤP ĐƯỜNG CONG)
+    # -------------------------------------------------------------
     if path_nodes:
         path_rows = collect_route_rows(path_nodes, stop_lookup)
-        for row in path_rows:
-            lat = row.get("Lat")
-            lon = row.get("Lon")
-            if lat is None or lon is None:
+        
+        # Duyệt qua từng cặp bến liên tiếp để vẽ đường
+        for i in range(len(path_rows) - 1):
+            row_A = path_rows[i]
+            row_B = path_rows[i+1]
+            
+            lat_A, lon_A = row_A.get("Lat"), row_A.get("Lon")
+            lat_B, lon_B = row_B.get("Lat"), row_B.get("Lon")
+            
+            if None in (lat_A, lon_A, lat_B, lon_B):
                 continue
-            route_points.append((lat, lon))
+                
+            route_id = row_B.get("Route", "---")
+            
+            if route_id == "---":
+                # Đoạn đi bộ trung chuyển -> Nét đứt màu xám
+                segment_path = [(lat_A, lon_A), (lat_B, lon_B)]
+                folium.PolyLine(
+                    segment_path,
+                    color="gray", weight=4, dash_array="5, 10", opacity=0.8,
+                    tooltip="Đi bộ / Chuyển tuyến"
+                ).add_to(m)
+            else:
+                # Đoạn đi bằng xe -> Truy xuất đường cong từ Database
+                segment_path = get_curved_segment(
+                    route_id=route_id,
+                    lat_A=lat_A, lon_A=lon_A,
+                    lat_B=lat_B, lon_B=lon_B
+                )
+                folium.PolyLine(
+                    segment_path,
+                    color="#1f77b4", weight=6, opacity=0.85,
+                    tooltip=f"Tuyến {route_id}"
+                ).add_to(m)
+                
+            # Đưa các điểm uốn lượn vào danh sách để Map tự động Zoom cho vừa vặn
+            route_points.extend(segment_path)
 
-        if len(route_points) >= 2:
-            folium.PolyLine(
-                route_points,
-                color="#1f77b4",
-                weight=5,
-                opacity=0.85,
-                tooltip="Lộ trình",
-            ).add_to(m)
-
+        # Vẽ Marker cho các bến
         for idx, row in enumerate(path_rows):
             lat = row.get("Lat")
             lon = row.get("Lon")
@@ -355,6 +381,7 @@ def build_route_map(
             color = "blue"
             icon = "circle"
             prefix = "fa"
+            
             if is_first:
                 color = "green"
                 icon = "play"
@@ -376,7 +403,9 @@ def build_route_map(
                 icon=folium.Icon(color=color, icon=icon, prefix=prefix),
             ).add_to(m)
 
-    # User-selected start/end positions
+    # -------------------------------------------------------------
+    # LOGIC VẼ ĐIỂM XUẤT PHÁT VÀ ĐÍCH THỰC TẾ
+    # -------------------------------------------------------------
     if start_coords is not None:
         popup = f"""
         <b>Điểm đi đã ghim</b><br>
@@ -387,7 +416,7 @@ def build_route_map(
             location=[start_coords.lat, start_coords.lon],
             popup=folium.Popup(popup, max_width=320),
             tooltip="Điểm đi",
-            icon=folium.Icon(color="green", icon="star", prefix="fa"),
+            icon=folium.Icon(color="red", icon="user", prefix="fa"),
         ).add_to(m)
 
     if goal_coords is not None:
@@ -400,20 +429,17 @@ def build_route_map(
             location=[goal_coords.lat, goal_coords.lon],
             popup=folium.Popup(popup, max_width=320),
             tooltip="Điểm đến",
-            icon=folium.Icon(color="red", icon="flag", prefix="fa"),
+            icon=folium.Icon(color="green", icon="star", prefix="fa"),
         ).add_to(m)
 
-    # Helper lines from clicked points to the nearest stop in the computed path
+    # Helper lines (Đường đi bộ nét đứt từ điểm ghim ra bến đầu tiên/cuối cùng)
     if path_nodes and start_coords is not None:
         first_stop = path_nodes[0].stop
         if first_stop is not None:
             folium.PolyLine(
                 [(start_coords.lat, start_coords.lon), (first_stop.lat, first_stop.lon)],
-                color="#2ca02c",
-                weight=3,
-                dash_array="6, 6",
-                opacity=0.75,
-                tooltip="Đoạn đi bộ vào bến",
+                color="gray", weight=4, dash_array="5, 10", opacity=0.8,
+                tooltip="Đi bộ vào bến",
             ).add_to(m)
 
     if path_nodes and goal_coords is not None:
@@ -421,14 +447,11 @@ def build_route_map(
         if last_stop is not None:
             folium.PolyLine(
                 [(last_stop.lat, last_stop.lon), (goal_coords.lat, goal_coords.lon)],
-                color="#d62728",
-                weight=3,
-                dash_array="6, 6",
-                opacity=0.75,
-                tooltip="Đoạn đi bộ ra điểm đến",
+                color="gray", weight=4, dash_array="5, 10", opacity=0.8,
+                tooltip="Đi bộ ra điểm đến",
             ).add_to(m)
 
-    # Fit bounds if we have any coordinates to show
+    # Căn chỉnh khung hình bản đồ
     bound_points = []
     if route_points:
         bound_points.extend(route_points)
