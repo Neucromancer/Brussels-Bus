@@ -35,3 +35,6 @@ def download_static_data():
         print(f"Lỗi xác thực hoặc API từ chối: {err}")
     except requests.exceptions.RequestException as e:
         print(f"Lỗi kết nối mạng: {e}")
+
+if __name__ == "__main__":
+    download_static_data()

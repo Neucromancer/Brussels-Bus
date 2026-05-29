@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sqlite3
 import pandas as pd
 
 from logic.models import Stop, NextStopInfo
@@ -84,3 +86,84 @@ def load_data(route_path_dataframe):
             curr_stop.next_stops.append(connection)
 
     return sorted(all_stops.values(), key=lambda s: (str(s.name), str(s.id)))
+
+# III. HÀM XỬ LÝ HÌNH HỌC ĐƯỜNG CONG
+
+def get_curved_segment(route_id, lat_A, lon_A, lat_B, lon_B, db_path=None):
+    """
+    Truy vấn Database để lấy mảng tọa độ uốn lượn thực tế.
+    Phiên bản Ultimate: Tự động phát hiện đúng chiều đi (Outbound/Inbound).
+    """
+    if db_path is None:
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        db_path = os.path.join(base_dir, "data", "stib_database.db")
+        
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. Lấy TẤT CẢ các shape_id của tuyến xe này (bao gồm cả lượt đi và về)
+        # Ép kiểu CAST sang TEXT để tránh lỗi khác biệt dữ liệu int/string
+        cursor.execute("""
+            SELECT DISTINCT t.shape_id 
+            FROM trips t
+            JOIN routes r ON t.route_id = r.route_id
+            WHERE CAST(r.route_short_name AS TEXT) = ? 
+        """, (str(route_id),))
+        
+        shape_ids = [row[0] for row in cursor.fetchall() if row[0]]
+        
+        if not shape_ids:
+            conn.close()
+            print(f"Cảnh báo: Không tìm thấy dây hình học cho tuyến {route_id}.")
+            return [(lat_A, lon_A), (lat_B, lon_B)]
+
+        def find_nearest_idx_and_dist(target_lat, target_lon, pts):
+            min_dist = float('inf')
+            best_idx = 0
+            for i, (p_lat, p_lon) in enumerate(pts):
+                dist = (target_lat - p_lat)**2 + (target_lon - p_lon)**2
+                if dist < min_dist:
+                    min_dist = dist
+                    best_idx = i
+            return best_idx, min_dist
+
+        best_segment = [(lat_A, lon_A), (lat_B, lon_B)]
+        min_total_dist = float('inf')
+
+        # 2. Duyệt qua từng sợi dây để tìm ra sợi khớp nhất với bến A và B
+        for sid in shape_ids:
+            cursor.execute("""
+                SELECT shape_pt_lat, shape_pt_lon 
+                FROM shapes 
+                WHERE shape_id = ? 
+                ORDER BY shape_pt_sequence
+            """, (sid,))
+            shape_pts = cursor.fetchall()
+
+            if not shape_pts: continue
+
+            idx_A, dist_A = find_nearest_idx_and_dist(lat_A, lon_A, shape_pts)
+            idx_B, dist_B = find_nearest_idx_and_dist(lat_B, lon_B, shape_pts)
+            
+            total_dist = dist_A + dist_B
+
+            # 3. Chọn sợi dây có tổng khoảng cách tới 2 bến là nhỏ nhất (Đúng chiều nhất)
+            if total_dist < min_total_dist:
+                min_total_dist = total_dist
+                
+                # Chốt chặn an toàn: Ngưỡng 0.0003 (~600m). 
+                if idx_A != idx_B and dist_A < 0.0003 and dist_B < 0.0003:
+                    if idx_A < idx_B:
+                        segment = shape_pts[idx_A : idx_B + 1]
+                    else:
+                        segment = shape_pts[idx_B : idx_A + 1][::-1]
+                        
+                    best_segment = [(lat_A, lon_A)] + segment + [(lat_B, lon_B)]
+
+        conn.close()
+        return best_segment
+        
+    except Exception as e:
+        print(f"Lỗi truy xuất đường cong DB (Tuyến {route_id}): {e}")
+        return [(lat_A, lon_A), (lat_B, lon_B)]

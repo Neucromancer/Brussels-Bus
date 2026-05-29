@@ -1,4 +1,3 @@
-
 import os
 import sys
 import sqlite3
@@ -22,7 +21,8 @@ for path in (BASE_DIR, SRC_DIR):
         sys.path.insert(0, str(path))
 
 # Project modules under src/
-from data_engine.data_process import load_data, normalize_route_paths_dataframe
+from UI.auth import login_form
+from data_engine.data_process import load_data, normalize_route_paths_dataframe, get_curved_segment
 from logic.router import a_star_search
 
 
@@ -52,6 +52,8 @@ def init_state() -> None:
         "manual_start_id": None,
         "manual_goal_id": None,
         "route_result": None,
+        "route_results": [],
+        "selected_route_name": None,
         "last_processed_click": None,
         "active_input_mode": None,
     }
@@ -62,6 +64,7 @@ def init_state() -> None:
 
 def clear_route_result() -> None:
     st.session_state.route_result = None
+    st.session_state.route_results = []
 
 
 def set_start_coords(lat: float, lon: float, nearest_stop: Optional[str] = None) -> None:
@@ -86,6 +89,8 @@ def reset_all() -> None:
         "manual_start_id",
         "manual_goal_id",
         "route_result",
+        "route_results",
+        "selected_route_name",
         "last_processed_click",
     ]:
         st.session_state.pop(key, None)
@@ -97,8 +102,8 @@ def reset_all() -> None:
 # -----------------------------------------------------------------------------
 def resolve_db_path() -> Path:
     candidates = [
-        BASE_DIR / "src" / "data_engine" / "stib_database.db",
         BASE_DIR / "data" / "stib_database.db",
+        BASE_DIR / "src" / "data_engine" / "stib_database.db",
         BASE_DIR / "src" / "data" / "stib_database.db",
     ]
     for path in candidates:
@@ -107,8 +112,8 @@ def resolve_db_path() -> Path:
     return candidates[0]
 
 
-@st.cache_data(show_spinner=False)
-def load_stops_table(db_path: str) -> pd.DataFrame:
+@st.cache_resource(show_spinner=False)
+def load_stops_table(db_path: str, disabled_routes: Tuple[str, ...]) -> pd.DataFrame:
     """Load stop metadata for labels / dropdowns."""
     conn = sqlite3.connect(db_path)
     try:
@@ -127,8 +132,8 @@ def load_stops_table(db_path: str) -> pd.DataFrame:
     return df.drop_duplicates(subset=["stop_id"]).sort_values(["stop_name", "stop_id"])
 
 
-@st.cache_data(show_spinner=False)
-def load_route_objects(db_path: str):
+@st.cache_resource(show_spinner=False)
+def load_route_objects(db_path: str, disabled_routes: Tuple[str, ...]):
     """Load route_paths dataframe and convert it to the stop graph used by A*."""
     conn = sqlite3.connect(db_path)
     try:
@@ -136,15 +141,19 @@ def load_route_objects(db_path: str):
     finally:
         conn.close()
 
+    if disabled_routes:
+        route_paths = route_paths[~route_paths['route_name'].astype(str).isin(disabled_routes)]
+
     route_paths = normalize_route_paths_dataframe(route_paths)
-    all_stops = load_data(route_paths)
+    all_stops = load_data(route_paths) # Graph được build sạch sẽ 100% không dính tuyến lỗi
     coordinates = {str(stop.id): (float(stop.lat), float(stop.lon)) for stop in all_stops}
     return route_paths, all_stops, coordinates
 
 
-@st.cache_data(show_spinner=False)
-def make_stop_lookup(db_path: str) -> Dict[str, Dict[str, object]]:
-    df = load_stops_table(db_path)
+@st.cache_resource(show_spinner=False)
+def make_stop_lookup(db_path: str, disabled_routes: Tuple[str, ...]) -> Dict[str, Dict[str, object]]:
+    # Truyền disabled_routes vào load_stops_table
+    df = load_stops_table(db_path, disabled_routes)
     return {
         row.stop_id: {
             "stop_name": row.stop_name,
@@ -153,7 +162,6 @@ def make_stop_lookup(db_path: str) -> Dict[str, Dict[str, object]]:
         }
         for row in df.itertuples(index=False)
     }
-
 
 # -----------------------------------------------------------------------------
 # Routing helpers
@@ -240,7 +248,187 @@ def build_route_segments(path_nodes: List[object]) -> pd.DataFrame:
         }
     )
 
+
     return pd.DataFrame(segments)
+
+
+def format_route_rank_text(rank: int) -> str:
+    return {1: "Tuyến chính", 2: "Phương án 2", 3: "Phương án 3"}.get(rank, f"Phương án {rank}")
+
+
+def set_route_results(results: List[Dict[str, object]]) -> None:
+    st.session_state.route_results = results[:3]
+    st.session_state.route_result = results[0] if results else None
+
+
+def build_selected_route_rows(
+    route_paths_df: pd.DataFrame,
+    selected_route_name: Optional[str],
+) -> pd.DataFrame:
+    if not selected_route_name:
+        return pd.DataFrame(columns=["route_name", "direction", "stop_order", "stop_id", "stop_name", "stop_lat", "stop_lon"])
+
+    mask = route_paths_df["route_name"].astype(str) == str(selected_route_name)
+    df = route_paths_df.loc[mask].copy()
+    if df.empty:
+        return pd.DataFrame(columns=["route_name", "direction", "stop_order", "stop_id", "stop_name", "stop_lat", "stop_lon"])
+    return df.sort_values(["direction", "stop_order", "stop_id"]).reset_index(drop=True)
+
+
+def draw_solution_path(
+    m: folium.Map,
+    path_nodes: List[object],
+    stop_lookup: Dict[str, Dict[str, object]],
+    *,
+    line_color: str,
+    line_weight: int,
+    line_opacity: float,
+    dashed_walk_color: str = "gray",
+    show_markers: bool = False,
+    label: str = "",
+) -> None:
+    path_rows = collect_route_rows(path_nodes, stop_lookup)
+    route_points = []
+
+    for i in range(len(path_rows) - 1):
+        row_A = path_rows[i]
+        row_B = path_rows[i + 1]
+        lat_A, lon_A = row_A.get("Lat"), row_A.get("Lon")
+        lat_B, lon_B = row_B.get("Lat"), row_B.get("Lon")
+        if None in (lat_A, lon_A, lat_B, lon_B):
+            continue
+
+        route_id = row_B.get("Route", "---")
+        if route_id == "---":
+            segment_path = [(lat_A, lon_A), (lat_B, lon_B)]
+            folium.PolyLine(
+                segment_path,
+                color=dashed_walk_color,
+                weight=max(3, line_weight - 2),
+                dash_array="5, 10",
+                opacity=min(0.85, line_opacity + 0.1),
+                tooltip="Đi bộ / chuyển tuyến" + (f" · {label}" if label else ""),
+            ).add_to(m)
+        else:
+            segment_path = get_curved_segment(
+                route_id=route_id,
+                lat_A=lat_A,
+                lon_A=lon_A,
+                lat_B=lat_B,
+                lon_B=lon_B,
+            )
+            folium.PolyLine(
+                segment_path,
+                color=line_color,
+                weight=line_weight,
+                opacity=line_opacity,
+                tooltip=(f"{label} · Tuyến {route_id}" if label else f"Tuyến {route_id}"),
+            ).add_to(m)
+        route_points.extend(segment_path)
+
+    if show_markers:
+        for idx, row in enumerate(path_rows):
+            lat = row.get("Lat")
+            lon = row.get("Lon")
+            if lat is None or lon is None:
+                continue
+            stop_name = row.get("Stop name", "---")
+            stop_id = row.get("Stop ID", "---")
+            route_id = row.get("Route", "---")
+            is_first = idx == 0
+            is_last = idx == len(path_rows) - 1
+            color = "blue"
+            icon = "circle"
+            prefix = "fa"
+            if is_first:
+                color = "green"
+                icon = "play"
+            elif is_last:
+                color = "red"
+                icon = "flag"
+
+            popup_html = f"""
+            <b>{'Điểm đầu của lộ trình' if is_first else ('Điểm cuối của lộ trình' if is_last else 'Bến trung gian')}</b><br>
+            {stop_name}<br>
+            ID: {stop_id}<br>
+            Tuyến: {route_id}<br>
+            ({lat:.6f}, {lon:.6f})
+            """
+            folium.Marker(
+                location=[lat, lon],
+                popup=folium.Popup(popup_html, max_width=320),
+                tooltip=f"{stop_name} · {route_id}",
+                icon=folium.Icon(color=color, icon=icon, prefix=prefix),
+            ).add_to(m)
+
+    return route_points
+
+
+def draw_route_stops(
+    m: folium.Map,
+    route_rows: pd.DataFrame,
+    stop_lookup: Dict[str, Dict[str, object]],
+) -> List[Tuple[float, float]]:
+    points: List[Tuple[float, float]] = []
+    if route_rows.empty:
+        return points
+
+    for _, row in route_rows.iterrows():
+        lat = row.get("stop_lat")
+        lon = row.get("stop_lon")
+        if pd.isna(lat) or pd.isna(lon):
+            continue
+        lat = float(lat)
+        lon = float(lon)
+        stop_id = str(row.get("stop_id", ""))
+        stop_name = str(row.get("stop_name", ""))
+        route_name = str(row.get("route_name", ""))
+        direction = row.get("direction", "")
+        stop_order = row.get("stop_order", "")
+
+        points.append((lat, lon))
+        popup_html = f"""
+        <b>Tuyến {route_name}</b><br>
+        Hướng: {direction}<br>
+        Thứ tự: {stop_order}<br>
+        {stop_name}<br>
+        ID: {stop_id}<br>
+        ({lat:.6f}, {lon:.6f})
+        """
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=5,
+            color="#ff7f0e",
+            fill=True,
+            fill_opacity=0.9,
+            popup=folium.Popup(popup_html, max_width=320),
+            tooltip=f"Tuyến {route_name} · {stop_name}",
+        ).add_to(m)
+
+    # Connect consecutive stops within each direction
+    for (_, _direction), group in route_rows.groupby(["route_name", "direction"], sort=False):
+        group = group.sort_values(["stop_order", "stop_id"])
+        rows = list(group.itertuples(index=False))
+        for curr_row, next_row in zip(rows, rows[1:]):
+            lat_A, lon_A = float(curr_row.stop_lat), float(curr_row.stop_lon)
+            lat_B, lon_B = float(next_row.stop_lat), float(next_row.stop_lon)
+            segment_path = get_curved_segment(
+                route_id=str(curr_row.route_name),
+                lat_A=lat_A,
+                lon_A=lon_A,
+                lat_B=lat_B,
+                lon_B=lon_B,
+            )
+            folium.PolyLine(
+                segment_path,
+                color="#ff7f0e",
+                weight=3,
+                opacity=0.75,
+                tooltip=f"Tuyến {curr_row.route_name}",
+            ).add_to(m)
+            points.extend(segment_path)
+
+    return points
 
 
 def get_current_coords(
@@ -291,6 +479,7 @@ def get_current_coords(
     return start_coords, goal_coords, start_label, goal_label
 
 
+
 def build_route_map(
     all_stops: List[object],
     stop_lookup: Dict[str, Dict[str, object]],
@@ -299,8 +488,14 @@ def build_route_map(
     goal_coords: Optional[Coords] = None,
     start_nearest_stop: Optional[str] = None,
     goal_nearest_stop: Optional[str] = None,
+    route_solutions: Optional[List[Dict[str, object]]] = None,
+    selected_route_rows: Optional[pd.DataFrame] = None,
 ) -> folium.Map:
-    coords = [(float(stop.lat), float(stop.lon)) for stop in all_stops if getattr(stop, "lat", None) is not None and getattr(stop, "lon", None) is not None]
+    coords = [
+        (float(stop.lat), float(stop.lon))
+        for stop in all_stops
+        if getattr(stop, "lat", None) is not None and getattr(stop, "lon", None) is not None
+    ]
     if coords:
         center_lat = sum(lat for lat, _ in coords) / len(coords)
         center_lon = sum(lon for _, lon in coords) / len(coords)
@@ -321,63 +516,42 @@ def build_route_map(
         height=650,
     )
 
-    # Route polyline and route stop markers
-    route_points = []
-    if path_nodes:
-        path_rows = collect_route_rows(path_nodes, stop_lookup)
-        for row in path_rows:
-            lat = row.get("Lat")
-            lon = row.get("Lon")
-            if lat is None or lon is None:
+    bound_points: List[Tuple[float, float]] = []
+
+    # Show chosen route from the route selector
+    if selected_route_rows is not None and not selected_route_rows.empty:
+        bound_points.extend(draw_route_stops(m, selected_route_rows, stop_lookup))
+
+    # Show up to 3 best route solutions. Draw lower-ranked routes first so the
+    # primary route stays visually on top.
+    if route_solutions:
+        palette = [
+            (3, "#2ca02c", 6, 0.68, False),  # tertiary
+            (2, "#ff7f0e", 6, 0.78, False),  # secondary
+            (1, "#1f77b4", 9, 1.00, True),   # primary
+        ]
+        route_map = {idx + 1: result for idx, result in enumerate(route_solutions[:3])}
+        for rank, color, weight, opacity, show_markers in palette:
+            result = route_map.get(rank)
+            if not result:
                 continue
-            route_points.append((lat, lon))
-
-        if len(route_points) >= 2:
-            folium.PolyLine(
-                route_points,
-                color="#1f77b4",
-                weight=5,
-                opacity=0.85,
-                tooltip="Lộ trình",
-            ).add_to(m)
-
-        for idx, row in enumerate(path_rows):
-            lat = row.get("Lat")
-            lon = row.get("Lon")
-            if lat is None or lon is None:
+            path_nodes = result.get("path") or []
+            if not path_nodes:
                 continue
+            route_label = format_route_rank_text(rank)
+            path_points = draw_solution_path(
+                m,
+                path_nodes,
+                stop_lookup,
+                line_color=color,
+                line_weight=weight,
+                line_opacity=opacity,
+                show_markers=show_markers,
+                label=route_label,
+            )
+            bound_points.extend(path_points)
 
-            route_id = row.get("Route", "---")
-            stop_name = row.get("Stop name", "---")
-            stop_id = row.get("Stop ID", "---")
-
-            is_first = idx == 0
-            is_last = idx == len(path_rows) - 1
-            color = "blue"
-            icon = "circle"
-            prefix = "fa"
-            if is_first:
-                color = "green"
-                icon = "play"
-            elif is_last:
-                color = "red"
-                icon = "flag"
-
-            popup_html = f"""
-            <b>{'Điểm đầu của lộ trình' if is_first else ('Điểm cuối của lộ trình' if is_last else 'Bến trung gian')}</b><br>
-            {stop_name}<br>
-            ID: {stop_id}<br>
-            Tuyến: {route_id}<br>
-            ({lat:.6f}, {lon:.6f})
-            """
-            folium.Marker(
-                location=[lat, lon],
-                popup=folium.Popup(popup_html, max_width=320),
-                tooltip=f"{stop_name} · {route_id}",
-                icon=folium.Icon(color=color, icon=icon, prefix=prefix),
-            ).add_to(m)
-
-    # User-selected start/end positions
+    # Original pinned points
     if start_coords is not None:
         popup = f"""
         <b>Điểm đi đã ghim</b><br>
@@ -404,10 +578,11 @@ def build_route_map(
             icon=folium.Icon(color="red", icon="flag", prefix="fa"),
         ).add_to(m)
 
-    # Helper lines from clicked points to the nearest stop in the computed path
     if path_nodes and start_coords is not None:
         first_stop = path_nodes[0].stop
         if first_stop is not None:
+            bound_points.append((start_coords.lat, start_coords.lon))
+            bound_points.append((first_stop.lat, first_stop.lon))
             folium.PolyLine(
                 [(start_coords.lat, start_coords.lon), (first_stop.lat, first_stop.lon)],
                 color="#2ca02c",
@@ -420,6 +595,8 @@ def build_route_map(
     if path_nodes and goal_coords is not None:
         last_stop = path_nodes[-1].stop
         if last_stop is not None:
+            bound_points.append((last_stop.lat, last_stop.lon))
+            bound_points.append((goal_coords.lat, goal_coords.lon))
             folium.PolyLine(
                 [(last_stop.lat, last_stop.lon), (goal_coords.lat, goal_coords.lon)],
                 color="#d62728",
@@ -428,15 +605,6 @@ def build_route_map(
                 opacity=0.75,
                 tooltip="Đoạn đi bộ ra điểm đến",
             ).add_to(m)
-
-    # Fit bounds if we have any coordinates to show
-    bound_points = []
-    if route_points:
-        bound_points.extend(route_points)
-    if start_coords is not None:
-        bound_points.append((start_coords.lat, start_coords.lon))
-    if goal_coords is not None:
-        bound_points.append((goal_coords.lat, goal_coords.lon))
 
     if bound_points:
         m.fit_bounds(bound_points, padding=(30, 30))
@@ -463,17 +631,53 @@ st.title("🚌 Ứng dụng tìm đường đi tàu điện / bus")
 
 db_path = resolve_db_path()
 
+# Khai báo biến global ra ngoài để phía dưới cuối file Admin đọc được
+route_paths_raw = None
+
 with st.spinner("Đang nạp dữ liệu tuyến..."):
     try:
-        route_paths, all_stops, coordinates = load_route_objects(str(db_path))
-        stop_lookup = make_stop_lookup(str(db_path))
-        stops_df = load_stops_table(str(db_path))
+        # Khởi tạo trạng thái danh sách chặn nếu chưa có
+        if "disabled_routes" not in st.session_state:
+            st.session_state.disabled_routes = set()
+
+        # Lấy danh sách tuyến bị Admin cấu hình chặn và chuyển sang tuple để dùng cho Cache
+        disabled_routes_set = st.session_state.get("disabled_routes", set())
+        disabled_routes_tuple = tuple(sorted(list(disabled_routes_set)))
+        
+        # Để lấy toàn bộ danh sách tuyến hiển thị ở menu Admin, ta nạp bản raw không chặn
+        route_paths_raw, _, _ = load_route_objects(str(db_path), disabled_routes=())
+
+        # 1. Đọc dữ liệu đã ĐƯỢC LỌC SẠCH từ trong hàm nhờ cơ chế kích hoạt Cache mới
+        route_paths, all_stops, coordinates = load_route_objects(str(db_path), disabled_routes=disabled_routes_tuple)
+        stop_lookup = make_stop_lookup(str(db_path), disabled_routes=disabled_routes_tuple)
+        stops_df_filtered = load_stops_table(str(db_path), disabled_routes=disabled_routes_tuple)
+        
+        # 2. Lọc bến hiển thị trên Ô Selectbox tương ứng với mạng lưới đang chạy
+        active_stop_ids = {str(stop.id) for stop in all_stops}
+        stops_df = stops_df_filtered[stops_df_filtered['stop_id'].astype(str).isin(active_stop_ids)]
+
     except Exception as exc:
         st.error(f"Không thể nạp dữ liệu từ database: {exc}")
         st.stop()
 
 # Main map first
 st.subheader("Bản đồ")
+route_options = ["— Không chọn —"] + sorted([str(r) for r in route_paths["route_name"].dropna().astype(str).unique()])
+default_route_idx = 0
+if st.session_state.get("selected_route_name") in route_options:
+    default_route_idx = route_options.index(st.session_state.selected_route_name)
+selected_route_name = st.selectbox(
+    "Chọn tuyến để xem toàn bộ bến",
+    route_options,
+    index=default_route_idx,
+    key="selected_route_selector",
+)
+selected_route_name = None if selected_route_name == "— Không chọn —" else selected_route_name
+if st.session_state.get("selected_route_name") != selected_route_name:
+    st.session_state.selected_route_name = selected_route_name
+
+selected_route_rows = build_selected_route_rows(route_paths, selected_route_name)
+
 input_mode = st.radio(
     "Cách chọn điểm",
     ["Ghim trên bản đồ", "Chọn bến có sẵn"],
@@ -503,6 +707,8 @@ map_obj = build_route_map(
     goal_coords=goal_coords,
     start_nearest_stop=nearest_start_stop,
     goal_nearest_stop=nearest_goal_stop,
+    route_solutions=st.session_state.get("route_results") or [],
+    selected_route_rows=selected_route_rows,
 )
 map_state = render_map(map_obj)
 
@@ -577,6 +783,27 @@ else:
     with c2:
         st.caption("Bạn vẫn có thể tìm đường ngay sau khi chọn bến ở phần này.")
 
+if selected_route_rows is not None and not selected_route_rows.empty:
+    st.subheader("Tuyến đang xem")
+    route_name = selected_route_rows["route_name"].astype(str).iloc[0]
+    st.caption(f"Đang hiển thị toàn bộ bến của tuyến **{route_name}**.")
+    display_cols = ["route_name", "direction", "stop_order", "stop_name", "stop_id", "stop_lat", "stop_lon"]
+    st.dataframe(
+        selected_route_rows[display_cols].rename(
+            columns={
+                "route_name": "Tuyến",
+                "direction": "Hướng",
+                "stop_order": "Thứ tự",
+                "stop_name": "Tên bến",
+                "stop_id": "Mã bến",
+                "stop_lat": "Vĩ độ",
+                "stop_lon": "Kinh độ",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
 # Show current coordinates summary
 summary_cols = st.columns(2)
 with summary_cols[0]:
@@ -617,23 +844,43 @@ if search_clicked:
         if not results:
             st.warning("Không tìm được đường đi phù hợp từ dữ liệu hiện tại.")
             st.session_state.route_result = None
+            st.session_state.route_results = []
         else:
-            best = results[0]
-            st.session_state.route_result = best
+            set_route_results(results)
 
 # Present result if available
-if st.session_state.route_result:
-    best = st.session_state.route_result
-    path_nodes = best["path"]
+route_results = st.session_state.get("route_results") or ([] if st.session_state.route_result is None else [st.session_state.route_result])
 
+if route_results:
     st.subheader("Kết quả")
+    top = route_results[0]
+    top_path = top["path"]
+
     st.success(
-        f"Tìm thấy lộ trình với {len(path_nodes)} bến. Tổng thời gian ước tính: {best['duration']:.2f} phút."
+        f"Đã tìm được {min(3, len(route_results))} lộ trình tốt nhất. "
+        f"Tuyến chính có {len(top_path)} bến, tổng thời gian ước tính: {top['duration']:.2f} phút."
     )
 
-    route_segments = build_route_segments(path_nodes)
+    cards = st.columns(min(3, len(route_results)))
+    for idx, result in enumerate(route_results[:3]):
+        path_nodes = result["path"]
+        duration = result["duration"]
+        title = format_route_rank_text(idx + 1)
+        with cards[idx]:
+            if idx == 0:
+                st.markdown(f"### ⭐ {title}")
+                st.markdown(f"**Thời gian:** {duration:.2f} phút")
+                st.markdown(f"**Số bến:** {len(path_nodes)}")
+            else:
+                st.info(
+                    f"{title}\n\n"
+                    f"Thời gian: {duration:.2f} phút\n\n"
+                    f"Số bến: {len(path_nodes)}"
+                )
+
+    route_segments = build_route_segments(top_path)
     if not route_segments.empty:
-        st.write("**Các tuyến xe trong lộ trình**")
+        st.write("**Các tuyến xe trong lộ trình chính**")
         st.dataframe(route_segments, use_container_width=True, hide_index=True)
 
         route_line = "  •  ".join(
@@ -642,12 +889,12 @@ if st.session_state.route_result:
         )
         st.info(route_line)
 
-    path_rows = collect_route_rows(path_nodes, stop_lookup)
+    path_rows = collect_route_rows(top_path, stop_lookup)
     if path_rows:
-        with st.expander("Chi tiết từng bến trong lộ trình", expanded=False):
+        with st.expander("Chi tiết từng bến trong tuyến chính", expanded=False):
             st.dataframe(pd.DataFrame(path_rows), use_container_width=True, hide_index=True)
 
-    final_walk_minutes = best["duration"] - float(path_nodes[-1].g)
+    final_walk_minutes = top["duration"] - float(top_path[-1].g)
     if final_walk_minutes > 0.1:
         st.caption(f"Còn khoảng {final_walk_minutes:.1f} phút đi bộ từ bến cuối tới điểm đến.")
 
@@ -659,3 +906,31 @@ with st.expander("Thông tin dữ liệu", expanded=False):
     info_cols[1].metric("Số node graph", f"{len(all_stops):,}")
     info_cols[2].metric("Số dòng route_paths", f"{len(route_paths):,}")
     st.write(f"**Database đang dùng:** `{db_path}`")
+
+# Admin controls
+login_form()
+
+# --- Khu vực dành cho Admin ---
+if st.session_state.get("is_admin", False):
+    st.write("---")
+    st.subheader("🛠️ Khu vực quản trị: Tạm dừng hoạt động các Tuyến Subway")
+
+    df_for_menu = route_paths_raw if route_paths_raw is not None else route_paths                         # Lấy dataframe
+
+    all_routes = sorted(list(df_for_menu['route_name'].unique())) 
+    all_routes_str = [str(r) for r in all_routes]                                                         # Lấy danh sách tuyến định dạng string
+
+    current_disabled = st.session_state.get("disabled_routes", set())                                     # Lấy list bến hủy từ session state
+    default_blocked = [str(r) for r in current_disabled if str(r) in all_routes_str]                      # Chuyển về định dạng string
+
+    selected_disabled = st.multiselect(                                                                   # Thanh chọn tuyến hủy     
+        "Chọn các tuyến Subway muốn TẠM XÓA khỏi hệ thống:",
+        options=all_routes_str,                                                                           # Danh sách tất cả tuyến
+        default=default_blocked,                                                                          # Danh sách tuyến hủy
+        key="admin_disable_routes_select"
+    )
+
+    if st.button("🚨 Cập nhật và Khởi động lại mạng lưới", type="primary"):
+        st.session_state.disabled_routes = set(selected_disabled)                                         # Cập nhật Set các tuyến bị hủy mới
+        st.success(f"Đã tạm dừng nạp dữ liệu cho các tuyến: {', '.join(selected_disabled)}")
+        st.rerun()

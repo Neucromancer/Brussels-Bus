@@ -53,10 +53,10 @@ def a_star_search(user_coords, dest_coords, all_stops):
                 'duration': total_duration
             })
             
-            if total_duration < best_time:                                                                        # Cập nhật thời gian tốt nhất nếu đường đi này nhanh hơn
+            if total_duration < best_time:                                                                          # Cập nhật thời gian tốt nhất nếu đường đi này nhanh hơn
                 best_time = total_duration
 
-        for info in current_node.stop.next_stops:                                                                 # 4. DUYỆT CÁC BẾN KẾ TIẾP (Neighbors)
+        for info in current_node.stop.next_stops:                                                               # 4. DUYỆT CÁC BẾN KẾ TIẾP (Neighbors)
 
             arrival_time = current_node.g + info.travel_time                                                        # a. Tính g(x) mới = g cũ + thời gian di chuyển bus
             
@@ -71,7 +71,7 @@ def a_star_search(user_coords, dest_coords, all_stops):
             if info.stop.id not in visited or arrival_time < visited[info.stop.id]:                                 # d. Thực hiện tỉa nếu lặp lại một bến với thời gian tồi hơn
                 visited[info.stop.id] = arrival_time
             
-                new_node = AStarNode(                                                                                 # Nếu không bị tỉa, tạo Node đưa vào hàng đợi
+                new_node = AStarNode(                                                                               # Nếu không bị tỉa, tạo Node đưa vào hàng đợi
                     stop=info.stop,
                     parent=current_node,
                     g=arrival_time,
