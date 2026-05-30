@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 import sqlite3
 import pandas as pd
+import streamlit as st
 
+from pathlib import Path
+from typing import Dict, Tuple, List
 from logic.models import Stop, NextStopInfo
 from const import BUS_SPEED, TRANSFER_PENALTY
 from logic.helpers import haversine
@@ -167,3 +170,66 @@ def get_curved_segment(route_id, lat_A, lon_A, lat_B, lon_B, db_path=None):
     except Exception as e:
         print(f"Lỗi truy xuất đường cong DB (Tuyến {route_id}): {e}")
         return [(lat_A, lon_A), (lat_B, lon_B)]
+    
+
+def resolve_db_path():
+    from pathlib import Path
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    candidates = [
+        BASE_DIR / "data" / "stib_database.db",
+        BASE_DIR / "src" / "data_engine" / "stib_database.db",
+        BASE_DIR / "src" / "data" / "stib_database.db",
+    ]
+    for path in candidates:
+        if path.exists(): return path
+    return candidates[0]
+
+@st.cache_resource(show_spinner=False)
+def load_stops_table(db_path: str, disabled_routes: tuple) -> pd.DataFrame:
+    conn = sqlite3.connect(db_path)
+    df = pd.read_sql_query("SELECT stop_id, stop_name, stop_lat, stop_lon FROM stops", conn)
+    conn.close()
+    df["stop_id"] = df["stop_id"].astype(str)
+    df["stop_lat"] = pd.to_numeric(df["stop_lat"], errors="coerce")
+    df["stop_lon"] = pd.to_numeric(df["stop_lon"], errors="coerce")
+    return df.dropna(subset=["stop_lat", "stop_lon"]).drop_duplicates(subset=["stop_id"]).sort_values(["stop_name", "stop_id"])
+
+@st.cache_resource(show_spinner=False)
+def load_route_objects(db_path: str, disabled_routes: tuple):
+    conn = sqlite3.connect(db_path)
+    route_paths = pd.read_sql_query("SELECT * FROM route_paths", conn)
+    conn.close()
+    if disabled_routes:
+        route_paths = route_paths[~route_paths['route_name'].astype(str).isin(disabled_routes)]
+    route_paths = normalize_route_paths_dataframe(route_paths)
+    all_stops = load_data(route_paths) 
+    coordinates = {str(stop.id): (float(stop.lat), float(stop.lon)) for stop in all_stops}
+    return route_paths, all_stops, coordinates
+
+@st.cache_resource(show_spinner=False)
+def make_stop_lookup(db_path: str, disabled_routes: tuple):
+    df = load_stops_table(db_path, disabled_routes)
+    return {row.stop_id: {"stop_name": row.stop_name, "stop_lat": float(row.stop_lat), "stop_lon": float(row.stop_lon)} for row in df.itertuples(index=False)}
+
+def build_route_segments(path_nodes):
+    if not path_nodes or len(path_nodes) < 2:
+        return pd.DataFrame(columns=["Tuyến", "Từ", "Đến", "Số bến", "Thời gian (phút)"])
+    segments = []
+    seg_start_idx = 1  
+    route_of = lambda node: str(getattr(node, "route_id", None) or "---")
+    current_route = route_of(path_nodes[1])
+    for idx in range(2, len(path_nodes)):
+        nxt_route = route_of(path_nodes[idx])
+        if nxt_route != current_route:
+            segments.append({"Tuyến": current_route, "Từ": getattr(path_nodes[seg_start_idx - 1].stop, "name", "---"), "Đến": getattr(path_nodes[idx - 1].stop, "name", "---"), "Số bến": idx - seg_start_idx, "Thời gian (phút)": round(float(path_nodes[idx - 1].g - path_nodes[seg_start_idx - 1].g), 2)})
+            seg_start_idx = idx; current_route = nxt_route
+    segments.append({"Tuyến": current_route, "Từ": getattr(path_nodes[seg_start_idx - 1].stop, "name", "---"), "Đến": getattr(path_nodes[-1].stop, "name", "---"), "Số bến": len(path_nodes) - seg_start_idx, "Thời gian (phút)": round(float(path_nodes[-1].g - path_nodes[seg_start_idx - 1].g), 2)})
+    return pd.DataFrame(segments)
+
+def build_selected_route_rows(route_paths_df, selected_route_name):
+    if not selected_route_name:
+        return pd.DataFrame(columns=["route_name", "direction", "stop_order", "stop_id", "stop_name", "stop_lat", "stop_lon"])
+    mask = route_paths_df["route_name"].astype(str) == str(selected_route_name)
+    df = route_paths_df.loc[mask].copy()
+    if df.empty: return pd.DataFrame(columns=["route_name", "direction", "stop_order", "stop_id", "stop_name", "stop_lat", "stop_lon"])
+    return df.sort_values(["direction", "stop_order", "stop_id"]).reset_index(drop=True)
