@@ -8,13 +8,28 @@ import streamlit as st
 from pathlib import Path
 from typing import Dict, Tuple, List
 from logic.models import Stop, NextStopInfo
-from const import BUS_SPEED, TRANSFER_PENALTY
+from const import METRO_LINES, METRO_SPEED, BUS_SPEED, TRANSFER_PENALTY_METRO, TRANSFER_PENALTY_BUS
 from logic.helpers import haversine
 
 
-# I. Lấy thời gian chờ trung bình của tuyến (route_id) từ database
-def get_waiting_time(route_id):
-    return TRANSFER_PENALTY
+# I. Lấy thời gian chờ và tốc độ trung bình của tuyến (route_id) từ database
+def get_route_speed(route_name: str) -> float:
+    """Trả về vận tốc thương mại (km/h) bằng cách tra cứu thủ công"""
+    route_name = str(route_name).upper().strip() 
+    
+    if route_name in METRO_LINES:
+        return METRO_SPEED
+    else:
+        return BUS_SPEED  # Các tuyến còn lại mặc định là Bus
+    
+def get_waiting_time(route_name: str) -> float:
+    """Trả về thời gian chờ (phút) bằng cách tra cứu thủ công"""
+    route_name = str(route_name).upper().strip()
+    
+    if route_name in METRO_LINES:
+        return TRANSFER_PENALTY_METRO
+    else:
+        return TRANSFER_PENALTY_BUS
 
 
 def normalize_route_paths_dataframe(route_path_dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -81,8 +96,9 @@ def load_data(route_path_dataframe):
             curr_stop = all_stops[str(curr_row.stop_id)]
             next_stop = all_stops[str(next_row.stop_id)]
 
+            speed_kmh = get_route_speed(str(curr_row.route_name))
             travel_time = (
-                haversine(curr_stop.lat, curr_stop.lon, next_stop.lat, next_stop.lon) / BUS_SPEED
+                haversine(curr_stop.lat, curr_stop.lon, next_stop.lat, next_stop.lon) / speed_kmh
             ) * 60
 
             connection = NextStopInfo(next_stop, travel_time, str(curr_row.route_name))
