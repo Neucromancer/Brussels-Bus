@@ -109,18 +109,18 @@ def draw_route_stops(m, route_rows, stop_lookup):
     return points
 
 def build_route_map(all_stops, stop_lookup, path_nodes=None, start_coords=None, goal_coords=None, start_nearest_stop=None, goal_nearest_stop=None, selected_route_rows=None) -> folium.Map:
+    # 1. KHỞI TẠO TÂM BẢN ĐỒ MẶC ĐỊNH (Trung bình tọa độ các bến hoặc Brussels)
     coords = [(float(s.lat), float(s.lon)) for s in all_stops if getattr(s, "lat", None) is not None and getattr(s, "lon", None) is not None]
-    center_lat, center_lon = (sum(lat for lat, _ in coords)/len(coords), sum(lon for _, lon in coords)/len(coords)) if coords else DEFAULT_MAP_CENTER
-    if start_coords: center_lat, center_lon = start_coords.lat, start_coords.lon
-    elif goal_coords: center_lat, center_lon = goal_coords.lat, goal_coords.lon
+    default_center = (sum(lat for lat, _ in coords)/len(coords), sum(lon for _, lon in coords)/len(coords)) if coords else DEFAULT_MAP_CENTER
 
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, control_scale=True, tiles="OpenStreetMap", width="100%", height=650)
+    m = folium.Map(location=default_center, zoom_start=13, control_scale=True, tiles="OpenStreetMap", width="100%", height=650)
     bound_points = []
 
+    # Vẽ đường xe chạy nếu xem thông tin tuyến (Admin)
     if selected_route_rows is not None and not selected_route_rows.empty:
         bound_points.extend(draw_route_stops(m, selected_route_rows, stop_lookup))
 
-    # --- ĐÃ SỬA: CHỈ VẼ DUY NHẤT 1 LỘ TRÌNH ĐANG CHỌN (path_nodes) ---
+    # Vẽ lộ trình A* nếu có
     if path_nodes:
         bound_points.extend(draw_solution_path(
             m, path_nodes, stop_lookup, 
@@ -128,19 +128,29 @@ def build_route_map(all_stops, stop_lookup, path_nodes=None, start_coords=None, 
             show_markers=True, label="Lộ trình đang chọn"
         ))
 
+    # 2. VẼ ĐIỂM ĐI/ĐẾN VÀ NẠP TỌA ĐỘ VÀO BỘ LỌC CAMERA (BOUNDS)
     if start_coords is not None:
         folium.Marker([start_coords.lat, start_coords.lon], popup=folium.Popup(f"<b>Điểm đi</b><br>Gần: {stop_lookup[start_nearest_stop]['stop_name'] if start_nearest_stop in stop_lookup else ''}", max_width=320), tooltip="Điểm đi", icon=folium.Icon(color="green", icon="star", prefix="fa")).add_to(m)
+        bound_points.append((start_coords.lat, start_coords.lon)) # <-- Bắt buộc có dòng này
+
     if goal_coords is not None:
         folium.Marker([goal_coords.lat, goal_coords.lon], popup=folium.Popup(f"<b>Điểm đến</b><br>Gần: {stop_lookup[goal_nearest_stop]['stop_name'] if goal_nearest_stop in stop_lookup else ''}", max_width=320), tooltip="Điểm đến", icon=folium.Icon(color="red", icon="flag", prefix="fa")).add_to(m)
+        bound_points.append((goal_coords.lat, goal_coords.lon)) # <-- Bắt buộc có dòng này
 
+    # Vẽ nét đứt đi bộ (đã bỏ phần thừa push tọa độ lặp lại vào bound_points)
     if path_nodes and start_coords is not None and path_nodes[0].stop is not None:
-        bound_points.extend([(start_coords.lat, start_coords.lon), (path_nodes[0].stop.lat, path_nodes[0].stop.lon)])
         folium.PolyLine([(start_coords.lat, start_coords.lon), (path_nodes[0].stop.lat, path_nodes[0].stop.lon)], color="#2ca02c", weight=3, dash_array="6, 6", opacity=0.75).add_to(m)
     if path_nodes and goal_coords is not None and path_nodes[-1].stop is not None:
-        bound_points.extend([(path_nodes[-1].stop.lat, path_nodes[-1].stop.lon), (goal_coords.lat, goal_coords.lon)])
         folium.PolyLine([(path_nodes[-1].stop.lat, path_nodes[-1].stop.lon), (goal_coords.lat, goal_coords.lon)], color="#d62728", weight=3, dash_array="6, 6", opacity=0.75).add_to(m)
 
-    if bound_points: m.fit_bounds(bound_points, padding=(30, 30))
+    # 3. ĐIỀU CHỈNH CAMERA HIỂN THỊ THÔNG MINH
+    if len(bound_points) > 1:
+        # Nếu có từ 2 điểm trở lên (cả xuất phát + đích), co giãn khung hình để ôm trọn vẹn cả 2
+        m.fit_bounds(bound_points, padding=(30, 30))
+    elif len(bound_points) == 1:
+        # Nếu chỉ có 1 điểm xuất phát, hiển thị sao cho nhìn thấy cả tâm thành phố lẫn điểm xuất phát
+        m.fit_bounds([default_center, bound_points[0]], padding=(30, 30))
+
     return m
 
 def render_map(m: folium.Map):

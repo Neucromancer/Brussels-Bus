@@ -82,13 +82,13 @@ with col_ctrl:
 
     # 3. Các nút điều khiển
     if input_mode == "Ghim trên bản đồ":
-        st.info(f"Đang chờ click: **{'📍 Đặt điểm đi' if st.session_state.pin_mode == 'start' else '🚩 Đặt điểm đến'}**")
+        st.info(f"Đang chờ click: **{'Đặt điểm đi' if st.session_state.pin_mode == 'start' else 'Đặt điểm đến'}**")
         c1, c2 = st.columns(2)
         with c1: 
-            if st.button("📍 Điểm đi", use_container_width=True): st.session_state.pin_mode = "start"; st.rerun()
+            if st.button("Điểm đi", use_container_width=True): st.session_state.pin_mode = "start"; st.rerun()
         with c2: 
-            if st.button("🚩 Điểm đến", use_container_width=True): st.session_state.pin_mode = "goal"; st.rerun()
-        if st.button("🗑️ Xóa điểm ghim", use_container_width=True): reset_all()
+            if st.button("Điểm đến", use_container_width=True): st.session_state.pin_mode = "goal"; st.rerun()
+        if st.button("Xóa điểm ghim", use_container_width=True): reset_all()
     else:
         options = [f"{row.stop_name}  ·  {row.stop_id}" for row in stops_df.itertuples(index=False)]
         choice_start = st.selectbox("📍 Bến xuất phát", options, index=0, key="manual_start_selector")
@@ -99,7 +99,7 @@ with col_ctrl:
         if st.session_state.manual_goal_id != (chosen_goal_id := choice_goal.split("·")[-1].strip()):
             st.session_state.manual_goal_id = chosen_goal_id; clear_route_result()
             
-        if st.button("🗑️ Xóa lựa chọn", use_container_width=True): reset_all()
+        if st.button("Xóa lựa chọn", use_container_width=True): reset_all()
 
     st.write("---")
     
@@ -182,15 +182,6 @@ if active_result:
     
     st.success(f"⭐ Đang xem {format_route_rank_text(current_idx + 1)}. Lộ trình đi qua {len(path_nodes)} bến, tổng thời gian ước tính: **{duration:.2f} phút**.")
     
-    # === BỔ SUNG: BẢNG CHỈ SỐ HIỆU SUẤT THUẬT TOÁN A* ===
-    st.write("**📊 Hiệu suất Thuật toán A***")
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("⏱️ Thời gian chạy", f"{active_result.get('execution_time', 0):.4f} s")
-    metric_cols[1].metric("📥 Node vào hàng đợi", f"{active_result.get('nodes_enqueued', 0):,}")
-    metric_cols[2].metric("🔍 Node đã duyệt (Pop)", f"{active_result.get('nodes_visited', 0):,}")
-    metric_cols[3].metric("🛤️ Độ dài đường đi", f"{len(path_nodes)} bến")
-    st.write("")
-    # ====================================================
 
     route_segments = build_route_segments(path_nodes)
     if not route_segments.empty:
@@ -210,7 +201,19 @@ if active_result:
 st.divider()
 
 # =====================================================================
-# 7. THÔNG TIN DỮ LIỆU BẢN ĐỒ (Database Info)
+# 7. HIỆU SUẤT THUẬT TOÁN A*
+# =====================================================================
+if active_result:
+    st.subheader("📊 Hiệu suất Thuật toán A*")
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("⏱️ Thời gian chạy", f"{active_result.get('execution_time', 0):.4f} s")
+    metric_cols[1].metric("📥 Node vào hàng đợi", f"{active_result.get('nodes_enqueued', 0):,}")
+    metric_cols[2].metric("🔍 Node đã duyệt (Pop)", f"{active_result.get('nodes_visited', 0):,}")
+    metric_cols[3].metric("🛤️ Độ dài đường đi", f"{len(path_nodes)} bến")
+    st.write("---")
+
+# =====================================================================
+# 8. THÔNG TIN DỮ LIỆU BẢN ĐỒ (Database Info)
 # =====================================================================
 with st.expander("🗄️ Thông tin Dữ liệu Mạng lưới (Database)", expanded=False):
     info_cols = st.columns(3)
@@ -218,10 +221,9 @@ with st.expander("🗄️ Thông tin Dữ liệu Mạng lưới (Database)", exp
     info_cols[1].metric("Không gian trạng thái (Total Nodes)", f"{len(all_stops):,}")
     info_cols[2].metric("Số cạnh kết nối (Route Paths)", f"{len(route_paths):,}")
     st.caption(f"**Nguồn CSDL:** `{db_path}`")
-    st.caption("*Bạn có thể so sánh Không gian trạng thái tổng này với **Số Node đã duyệt** ở phần Kết quả để thấy khả năng tỉa nhánh (pruning) và sức mạnh của hàm Heuristic trong thuật toán A*.*")
 
 # =====================================================================
-# 8. ADMIN PANEL
+# 9. ADMIN PANEL
 # =====================================================================
 login_form()
 render_admin_panel(route_paths_raw, route_paths)
